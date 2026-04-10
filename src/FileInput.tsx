@@ -6,7 +6,7 @@ const ctx  = canvas.getContext('2d')!
 
 export function FileInput() {
     const [fileState, setFileState] = useState<File | null>(null);
-    const {setVideoUrl, videoSrc, addFrame} = useVideoStore();
+    const {setVideoUrl, videoSrc, addFrame, setProcessingMeta} = useVideoStore();
     const prevUrlRef = useRef<string | null>(null)
 
 
@@ -38,12 +38,11 @@ export function FileInput() {
 
         const videoEl = ev.currentTarget
         const duration = videoEl.duration
+        setProcessingMeta(duration, .5)
 
         let currentTime = 0
 
         while (currentTime < duration) {
-            console.log('seeking to', currentTime)
-
             const seekedPromise = new Promise<void>((resolve) => {
                 const handler = () => {
                     videoEl.removeEventListener('seeked', handler)
@@ -64,9 +63,13 @@ export function FileInput() {
             // let video settle
             await new Promise(r => setTimeout(r, 30))
 
-            const bitmap = await captureFrame(videoEl)
-            frameCache.set(currentTime, bitmap);
-            addFrame(currentTime)
+            const maybeBlob = await captureFrame(videoEl, currentTime)
+            if (maybeBlob) {
+                frameCache.set(currentTime, maybeBlob);
+                addFrame(currentTime)
+            } else {
+                console.log('Skipped storing frame @ ', currentTime, ' because it\'s too similar to the previous frame');
+            }
 
             currentTime += 0.5
         }
@@ -99,16 +102,129 @@ function waitForFrame(video: HTMLVideoElement) {
     })
 }
 
-async function captureFrame(video: HTMLVideoElement) {
+let lastCapturedFrameImageData: ImageDataArray | undefined = undefined;
+const downscaledCanvas = document.createElement("canvas");
+const downscaledCtx = downscaledCanvas.getContext("2d")!
+async function captureFrame(video: HTMLVideoElement, timestamp: number) {
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
 
+    downscaledCanvas.width = Math.floor(video.videoWidth / 10);
+    downscaledCanvas.height = Math.floor(video.videoHeight / 10)
+
     ctx.drawImage(video, 0, 0)
+    downscaledCtx.drawImage(video, 0, 0 ,downscaledCanvas.width, downscaledCanvas.height)
+
+    const currentImageData = downscaledCtx.getImageData(0, 0, downscaledCanvas.width, downscaledCanvas.height);
+    if (!lastCapturedFrameImageData) {
+        lastCapturedFrameImageData = currentImageData.data.slice();
+    } else {
+        const diff = computeTextAwareDiff(currentImageData.data, lastCapturedFrameImageData, downscaledCanvas.width, downscaledCanvas.height, 4)
+        console.log('diff', diff)
+        // suggested diff should be between 10 and 20 (let user decide?)
+        if (diff >= 10) {
+            lastCapturedFrameImageData = currentImageData.data.slice();
+        } else {
+            return Promise.resolve(undefined)
+        }
+    }
 
     return new Promise<Blob>(resolve => {
         canvas.toBlob(maybeBlob => {
             if (maybeBlob) resolve(maybeBlob)
-            throw new Error("Canvas could not be converted to blob")
+            throw new Error(`Canvas @ ${timestamp} could not be converted to blob`)
         })
     })
+}
+
+// Taken directly from pilko studio, assumes no down sampling and works well with a threshold of 35
+function computePixelDiff(data1: ImageDataArray, data2: ImageDataArray, sampleFactor = 4) { let diff = 0; let count = 0; const step = 4 * sampleFactor; for (let i = 0; i < data1.length; i += step) { diff += Math.abs(data1[i] - data2[i]) + Math.abs(data1[i+1] - data2[i+1]) + Math.abs(data1[i+2] - data2[i+2]); count++; } return count > 0 ? (diff / (count * 3)) : 0; }
+
+/**
+
+ * Text-aware frame difference metric.
+ *
+ * Instead of comparing raw RGB values (which are noisy and sensitive to color changes),
+ * this function compares **luminance edges** between frames. It:
+ *
+ * 1. Converts pixels to luminance (perceptual grayscale)
+ * 2. Computes simple edge strength using neighbor differences (right + bottom)
+ * 3. Compares edge maps between frames
+ *
+ * Why:
+ * * Text is defined by **edges and contrast**, not color
+ * * Reduces noise from compression, color shifts, and minor lighting changes
+ * * Better detects meaningful changes for OCR (new text, layout shifts)
+ *
+ * Tradeoffs:
+ * * Slightly more compute than raw pixel diff (~2–3x per pixel)
+ * * Thresholds differ from RGB diff (typically lower, e.g. ~10–25)
+ *
+ * Notes:
+ * * Works best on downscaled frames for performance
+ * * Sampling (sampleFactor) skips pixels to further reduce cost
+ * * Can optionally ignore low-edge regions to focus on text-heavy areas
+ */
+function computeTextAwareDiff(
+    data1: Uint8ClampedArray,
+    data2: Uint8ClampedArray,
+    width: number,
+    height: number,
+    sampleFactor = 4
+) {
+    let diff = 0
+    let count = 0
+
+    const step = sampleFactor
+
+    for (let y = 0; y < height - 1; y += step) {
+        for (let x = 0; x < width - 1; x += step) {
+            const i = (y * width + x) * 4
+
+            // luminance
+            const g1 =
+                0.299 * data1[i] +
+                0.587 * data1[i + 1] +
+                0.114 * data1[i + 2]
+
+            const g2 =
+                0.299 * data2[i] +
+                0.587 * data2[i + 1] +
+                0.114 * data2[i + 2]
+
+            // neighbors (right + bottom)
+            const ir = i + 4
+            const ib = i + width * 4
+
+            const g1r =
+                0.299 * data1[ir] +
+                0.587 * data1[ir + 1] +
+                0.114 * data1[ir + 2]
+
+            const g1b =
+                0.299 * data1[ib] +
+                0.587 * data1[ib + 1] +
+                0.114 * data1[ib + 2]
+
+            const g2r =
+                0.299 * data2[ir] +
+                0.587 * data2[ir + 1] +
+                0.114 * data2[ir + 2]
+
+            const g2b =
+                0.299 * data2[ib] +
+                0.587 * data2[ib + 1] +
+                0.114 * data2[ib + 2]
+
+            const edge1 = Math.abs(g1 - g1r) + Math.abs(g1 - g1b)
+            const edge2 = Math.abs(g2 - g2r) + Math.abs(g2 - g2b)
+
+            // if (edge1 < 10 && edge2 < 10) continue
+
+            diff += Math.abs(edge1 - edge2)
+            count++
+        }
+    }
+
+    return count > 0 ? diff / count : 0
 }

@@ -9,16 +9,20 @@ type Frame = {
 
 interface VideoState {
     videoSrc: string,
+    setVideoUrl: (url: string) => void,
+    videoDuration: number,
+    samplingRate: number,
+
     frames: Frame[],
+
     currentFrame: number,
 
     processing: {
         seekingMs: number,
         ocrMs: number,
     },
-
-    setVideoUrl: (url: string) => void,
     addFrame: (timestamp: number) => void
+    setProcessingMeta: (videoDuration: number, samplingRate: number) => void
 }
 
 // Create store using the curried form of `create`
@@ -27,15 +31,17 @@ export const useVideoStore = create<VideoState>()((set) => ({
     frames: [],
     currentFrame: 0,
     processing: {seekingMs: 0, ocrMs:0 },
+    samplingRate: .5,
+    videoDuration: 0,
     setVideoUrl: (videoSrc: string) => set(() => ({videoSrc})),
     addFrame: ((timestamp: number) => set(s => {
-        console.log('adding')
         return ({
-            ...s,
             frames: [...s.frames, {timestamp}]
         })
     }
-   ))
+   )),
+    setProcessingMeta: ((videoDuration, samplingRate) => set(() => ({videoDuration, samplingRate}))),
+
 
 }))
 
