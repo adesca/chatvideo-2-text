@@ -105,5 +105,10 @@ async function captureFrame(video: HTMLVideoElement) {
 
     ctx.drawImage(video, 0, 0)
 
-    return await createImageBitmap(canvas)
+    return new Promise<Blob>(resolve => {
+        canvas.toBlob(maybeBlob => {
+            if (maybeBlob) resolve(maybeBlob)
+            throw new Error("Canvas could not be converted to blob")
+        })
+    })
 }

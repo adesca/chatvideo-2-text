@@ -39,4 +39,4 @@ export const useVideoStore = create<VideoState>()((set) => ({
 
 }))
 
-export const frameCache = new Map<number, ImageBitmap | Blob>()
+export const frameCache = new Map<number, Blob>()
