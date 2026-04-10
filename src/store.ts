@@ -2,9 +2,9 @@
 import {create} from "zustand/react";
 
 type Frame = {
-    id: number
+    // id: number
     timestamp: number
-    blobUrl: string // URL.createObjectURL(blob)
+    // blobUrl: string // URL.createObjectURL(blob)
 }
 
 interface VideoState {
@@ -17,7 +17,8 @@ interface VideoState {
         ocrMs: number,
     },
 
-    setVideoUrl: (url: string) => void
+    setVideoUrl: (url: string) => void,
+    addFrame: (timestamp: number) => void
 }
 
 // Create store using the curried form of `create`
@@ -26,7 +27,16 @@ export const useVideoStore = create<VideoState>()((set) => ({
     frames: [],
     currentFrame: 0,
     processing: {seekingMs: 0, ocrMs:0 },
-    setVideoUrl: (videoSrc: string) => set(() => ({videoSrc}))
+    setVideoUrl: (videoSrc: string) => set(() => ({videoSrc})),
+    addFrame: ((timestamp: number) => set(s => {
+        console.log('adding')
+        return ({
+            ...s,
+            frames: [...s.frames, {timestamp}]
+        })
+    }
+   ))
+
 }))
 
-const frameCache = new Map<number, ImageBitmap | Blob>()
+export const frameCache = new Map<number, ImageBitmap | Blob>()
