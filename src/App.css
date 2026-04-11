@@ -1,6 +1,6 @@
 @import "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css";
 .app-container {
-    display: flex;
+    /*display: flex;*/
     height: 100vh; /* full viewport height */
     overflow: hidden;
 }
@@ -11,10 +11,10 @@
     padding: 1rem;
 }
 
-.side-panel {
-    width: 320px; /* adjust as needed */
-    border-left: 1px solid #ddd;
-    overflow: auto;
-    padding: 1rem;
-    background: #fafafa;
-}
+/*.side-panel {*/
+/*    width: 320px; !* adjust as needed *!*/
+/*    border-left: 1px solid #ddd;*/
+/*    overflow: auto;*/
+/*    padding: 1rem;*/
+/*    background: #fafafa;*/
+/*}*/

@@ -23,6 +23,9 @@ interface VideoState {
     },
     addFrame: (timestamp: number) => void
     setProcessingMeta: (videoDuration: number, samplingRate: number) => void
+
+    nextOcrFrame: number,
+    setNextOcrFrameToProcess: (input: number) => void
 }
 
 // Create store using the curried form of `create`
@@ -41,6 +44,9 @@ export const useVideoStore = create<VideoState>()((set) => ({
     }
    )),
     setProcessingMeta: ((videoDuration, samplingRate) => set(() => ({videoDuration, samplingRate}))),
+
+    nextOcrFrame: 0,
+    setNextOcrFrameToProcess: input => set(() => ({nextOcrFrame: input}))
 
 
 }))
