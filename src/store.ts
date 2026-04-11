@@ -26,6 +26,13 @@ interface VideoState {
 
     nextOcrFrame: number,
     setNextOcrFrameToProcess: (input: number) => void
+    processedCount: number,
+    setProcessedCount: (input: number) => void,
+
+    processingStartTimestamp: number,
+    processingEndTimestamp: number,
+    setProcessingStartTimestamp: (ts: number) => void,
+    setProcessingEndTimestamp: (ts: number) => void
 }
 
 // Create store using the curried form of `create`
@@ -46,9 +53,15 @@ export const useVideoStore = create<VideoState>()((set) => ({
     setProcessingMeta: ((videoDuration, samplingRate) => set(() => ({videoDuration, samplingRate}))),
 
     nextOcrFrame: 0,
-    setNextOcrFrameToProcess: input => set(() => ({nextOcrFrame: input}))
+    setNextOcrFrameToProcess: input => set(() => ({nextOcrFrame: input})),
 
+    processedCount: 0,
+    setProcessedCount: processedCount => set(() => ({processedCount})),
 
+    processingStartTimestamp: 0,
+    processingEndTimestamp: 5,
+    setProcessingStartTimestamp: processingStartTimestamp => set(() => ({processingStartTimestamp})),
+    setProcessingEndTimestamp: processingEndTimestamp => set(() => ({processingEndTimestamp}))
 }))
 
 export const frameCache = new Map<number, Blob>()

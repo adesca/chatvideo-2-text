@@ -6,7 +6,7 @@ const ctx  = canvas.getContext('2d')!
 
 export function FileInput() {
     const [fileState, setFileState] = useState<File | null>(null);
-    const {setVideoUrl, videoSrc, addFrame, setProcessingMeta} = useVideoStore();
+    const {setVideoUrl, videoSrc, addFrame, setProcessingMeta, processingStartTimestamp, processingEndTimestamp} = useVideoStore();
     const prevUrlRef = useRef<string | null>(null)
 
 
@@ -42,7 +42,7 @@ export function FileInput() {
 
         let currentTime = 0
 
-        while (currentTime < duration) {
+        while (currentTime < duration && currentTime >= processingStartTimestamp && currentTime <= processingEndTimestamp) {
             const seekedPromise = new Promise<void>((resolve) => {
                 const handler = () => {
                     videoEl.removeEventListener('seeked', handler)
@@ -116,11 +116,14 @@ async function captureFrame(video: HTMLVideoElement, timestamp: number) {
     downscaledCtx.drawImage(video, 0, 0 ,downscaledCanvas.width, downscaledCanvas.height)
 
     const currentImageData = downscaledCtx.getImageData(0, 0, downscaledCanvas.width, downscaledCanvas.height);
+
+    if (isProbablyBlank(currentImageData))  return Promise.resolve(undefined);
+
     if (!lastCapturedFrameImageData) {
+        console.log(currentImageData.data.slice())
         lastCapturedFrameImageData = currentImageData.data.slice();
     } else {
         const diff = computeTextAwareDiff(currentImageData.data, lastCapturedFrameImageData, downscaledCanvas.width, downscaledCanvas.height, 4)
-        console.log('diff', diff)
         // suggested diff should be between 10 and 20 (let user decide?)
         if (diff >= 10) {
             lastCapturedFrameImageData = currentImageData.data.slice();
@@ -139,6 +142,35 @@ async function captureFrame(video: HTMLVideoElement, timestamp: number) {
 
 // Taken directly from pilko studio, assumes no down sampling and works well with a threshold of 35
 function computePixelDiff(data1: ImageDataArray, data2: ImageDataArray, sampleFactor = 4) { let diff = 0; let count = 0; const step = 4 * sampleFactor; for (let i = 0; i < data1.length; i += step) { diff += Math.abs(data1[i] - data2[i]) + Math.abs(data1[i+1] - data2[i+1]) + Math.abs(data1[i+2] - data2[i+2]); count++; } return count > 0 ? (diff / (count * 3)) : 0; }
+
+function isProbablyBlank(imageData: ImageData) {
+    const data = imageData.data;
+    let maxPixel = 0;
+    let nonBlackCount = 0;
+
+    const threshold = 10; // what counts as "non-black"
+    const totalPixels = data.length / 4;
+
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // track max channel value
+        if (r > maxPixel) maxPixel = r;
+        if (g > maxPixel) maxPixel = g;
+        if (b > maxPixel) maxPixel = b;
+
+        // count non-black pixels
+        if (r >= threshold || g >= threshold || b >= threshold) {
+            nonBlackCount++;
+        }
+    }
+
+    const nonBlackRatio = nonBlackCount / totalPixels;
+
+    return maxPixel < 10 && nonBlackRatio < 0.005;
+}
 
 /**
 

@@ -35,12 +35,12 @@ interface Props {
 function OCRReadText({worker}: Props) {
     const [text, setText] = useState<string[]>([])
     const [totalFrames, setTotalFrames] = useState<number>(0)
-    const [processedCount, setProcessedCount] = useState<number>(0);
     const processed = useRef(new Set());
 
 
     useEffect(() => {
-        const unsub = useVideoStore.subscribe(({frames, nextOcrFrame, setNextOcrFrameToProcess}) => {
+        const unsub = useVideoStore.subscribe(({frames, nextOcrFrame, setNextOcrFrameToProcess, setProcessedCount}) => {
+            return;
             if (frames.length <= nextOcrFrame) return;
             setTotalFrames(frames.length)
             if (processed.current.has(nextOcrFrame)) return;
@@ -61,19 +61,8 @@ function OCRReadText({worker}: Props) {
 
         return () => unsub()
     });
-    if (processedCount === 25) {
-        let str = "";
-        text.forEach((text, index) => {
-            str += `-----Frame #${index}\n${text}\n\n`
-        })
-        console.log('text', str)
-    }
 
     return <>
-        <progress className="progress is-link" value={processedCount} max={totalFrames}>
-            {(processedCount / totalFrames) * 100}%
-        </progress>
-        Finished running OCR for {processedCount} frames of {totalFrames}
         <div style={{overflow: 'auto', height: "100vh"}}>
             {text.map(t => <div className={'block'} key={t}>
                 {t}

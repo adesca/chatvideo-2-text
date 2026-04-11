@@ -19,7 +19,7 @@ function App() {
             </section>
         </div>
 
-        <aside className="side-panel column is-one-quarter">
+        <aside className="side-panel column is-one-quarter has-background-grey-dark" style={{borderLeft: "1px solid rgba(255,255,255, 0.08)"}}>
             <div className="content ">
                 {/*<h4 className="title is-6">Transcript</h4>*/}
                 <Transcript />
