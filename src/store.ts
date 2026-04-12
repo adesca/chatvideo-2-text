@@ -36,7 +36,9 @@ interface VideoState {
     setProcessingEndTimestamp: (ts: number) => void
 
     transcriptInfo: Record<number, Page>
-    setTranscriptInfo: (frameId: number, page: Page) => void
+    setTranscriptInfo: (frameId: number, page: Page) => void,
+    stitchDataUrl: string,
+    setStitchDataUrl: (str: string) => void
 }
 
 // Create store using the curried form of `create`
@@ -69,7 +71,11 @@ export const useVideoStore = create<VideoState>()((set) => ({
     transcriptInfo: {},
     setTranscriptInfo: (frameId, page) => set((s) => ({
         transcriptInfo: {...s.transcriptInfo, [frameId]: page}
-    }))
+    })),
+
+    stitchDataUrl: "",
+    setStitchDataUrl: (stitchDataUrl: string) => set(() => ({stitchDataUrl}))
 }))
 
 export const frameCache = new Map<number, Blob>()
+export const imageDataCache = new Map<number, ImageData>

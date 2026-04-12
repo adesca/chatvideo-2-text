@@ -4,27 +4,34 @@ import {createWorker} from "tesseract.js";
 import {ChatDenoiser, useDenoiserReplay} from "./ChatDenoiser.ts";
 
 export function Transcript() {
+    const [generateTranscript, setGEnerateTranscript] = useState(false);
     const [worker, setWorker] = useState<Awaited<ReturnType<typeof createWorker>> | null>(null)
+    const stitchDataUrl = useVideoStore(s => s.stitchDataUrl);
 
 
     useEffect(() => {
-        createWorker('eng')
-            .then(createdWorker => {
-                setWorker(createdWorker);
-            });
+        if (generateTranscript) {
+            createWorker('eng')
+                .then(createdWorker => {
+                    setWorker(createdWorker);
+                });
 
-        return () => {
-            worker?.terminate().then(() => {
-            })
-        };
-    }, [])
+            return () => {
+                worker?.terminate().then(() => {
+                })
+            };
+        }
 
-    if (!worker) {
+    }, [generateTranscript])
+
+    if (generateTranscript && !worker) {
         return <progress className="progress is-info is-large" max="100">30%</progress>
     }
 
 
     return <>
+        <button className={'button'} onClick={() => setGEnerateTranscript(true)}>Generate transcript</button>
+        {stitchDataUrl && <img src={stitchDataUrl} alt={'stitched chat stream'} />}
         {worker ? <OCRReadText worker={worker}/> : <></>}
     </>
 }
@@ -37,7 +44,6 @@ function OCRReadText({worker}: Props) {
     const transcriptInfo = useVideoStore(s => s.transcriptInfo);
     const processed = useRef(new Set());
     const {frames} = useDenoiserReplay(transcriptInfo)
-    console.log('frames', frames.length)
 
 
     useEffect(() => {
@@ -60,7 +66,6 @@ function OCRReadText({worker}: Props) {
         return () => unsub()
     });
 
-    console.log('frames for render', frames)
     return <>
         <div style={{overflow: 'auto', height: "100vh"}}>
             {frames.map(f => {

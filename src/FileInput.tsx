@@ -2,11 +2,10 @@ import {type ChangeEventHandler, type ReactEventHandler, useEffect, useRef, useS
 import {frameCache, useVideoStore} from "./store.ts";
 
 const canvas = document.createElement('canvas')
-const ctx  = canvas.getContext('2d')!
 
 export function FileInput() {
     const [fileState, setFileState] = useState<File | null>(null);
-    const {setVideoUrl, videoSrc, addFrame, setProcessingMeta, processingStartTimestamp, processingEndTimestamp} = useVideoStore();
+    const {setVideoUrl,setStitchDataUrl, videoSrc, addFrame, setProcessingMeta, processingStartTimestamp, processingEndTimestamp} = useVideoStore();
     const prevUrlRef = useRef<string | null>(null)
 
 
@@ -73,7 +72,9 @@ export function FileInput() {
 
             currentTime += 0.5
         }
+        setStitchDataUrl(stitchCanvas.toDataURL('image/png'))
     }
+
 
     return  <div className="file has-name is-boxed">
         <label className="file-label">
@@ -86,7 +87,9 @@ export function FileInput() {
             </span>
             <span className="file-name"> {fileState ? fileState.name : ""} </span>
         </label>
-        {videoSrc && <video src={videoSrc}  onLoadedMetadata={onVideoLoaded}/>}
+        <div>
+            {videoSrc && <video src={videoSrc}  onLoadedMetadata={onVideoLoaded}/>}
+        </div>
     </div>
 }
 
@@ -102,46 +105,147 @@ function waitForFrame(video: HTMLVideoElement) {
     })
 }
 
-let lastCapturedFrameImageData: ImageDataArray | undefined = undefined;
-const downscaledCanvas = document.createElement("canvas");
-const downscaledCtx = downscaledCanvas.getContext("2d")!
-async function captureFrame(video: HTMLVideoElement, timestamp: number) {
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+let lastDownscaledData: Uint8ClampedArray | null = null
+let lastDownscaledImage: ImageData | null = null
 
-    downscaledCanvas.width = Math.floor(video.videoWidth / 10);
+const downscaledCanvas = document.createElement("canvas")
+const downscaledCtx = downscaledCanvas.getContext("2d")!
+
+const stitchCanvas = document.createElement("canvas")
+const stitchCtx = stitchCanvas.getContext("2d")!
+
+const fullCanvas = document.createElement("canvas")
+const fullCtx = fullCanvas.getContext("2d")!
+function extractFrames(video: HTMLVideoElement) {
+    fullCanvas.width = video.videoWidth
+    fullCanvas.height = video.videoHeight
+
+    downscaledCanvas.width = Math.floor(video.videoWidth / 10)
     downscaledCanvas.height = Math.floor(video.videoHeight / 10)
 
-    ctx.drawImage(video, 0, 0)
-    downscaledCtx.drawImage(video, 0, 0 ,downscaledCanvas.width, downscaledCanvas.height)
+    fullCtx.drawImage(video, 0, 0)
+    downscaledCtx.drawImage(video, 0, 0, downscaledCanvas.width, downscaledCanvas.height)
 
-    const currentImageData = downscaledCtx.getImageData(0, 0, downscaledCanvas.width, downscaledCanvas.height);
+    return {
+        fullImage: fullCanvas, // for stitching
+        downscaled: downscaledCtx.getImageData(0, 0, downscaledCanvas.width, downscaledCanvas.height)
+    }
+}
+function shouldCaptureFrame(
+    current: ImageData,
+    prevData: Uint8ClampedArray | null,
+    threshold = 10
+) {
+    if (!prevData) return true
 
-    if (isProbablyBlank(currentImageData))  return Promise.resolve(undefined);
+    const diff = computeTextAwareDiff(
+        current.data,
+        prevData,
+        current.width,
+        current.height,
+        4
+    )
 
-    if (!lastCapturedFrameImageData) {
-        console.log(currentImageData.data.slice())
-        lastCapturedFrameImageData = currentImageData.data.slice();
-    } else {
-        const diff = computeTextAwareDiff(currentImageData.data, lastCapturedFrameImageData, downscaledCanvas.width, downscaledCanvas.height, 4)
-        // suggested diff should be between 10 and 20 (let user decide?)
-        if (diff >= 10) {
-            lastCapturedFrameImageData = currentImageData.data.slice();
-        } else {
-            return Promise.resolve(undefined)
-        }
+    return diff >= threshold
+}
+function computeNewRegion(
+    prev: ImageData,
+    curr: ImageData,
+    fullHeight: number,
+    downscaledHeight: number
+) {
+    const { matchY } = findOverlapBand(prev, curr)
+    const bandHeight = 20
+
+    const scale = fullHeight / downscaledHeight
+
+    const newContentStart = Math.floor((matchY + bandHeight) * scale)
+
+    return newContentStart
+}
+function appendToStitch(
+    sourceCanvas: HTMLCanvasElement,
+    newContentStart: number
+) {
+    const sliceHeight = sourceCanvas.height - newContentStart
+
+    if (sliceHeight <= 0) return
+
+    const stitchY = stitchCanvas.height
+
+    // preserve existing content
+    const temp = document.createElement("canvas")
+    temp.width = stitchCanvas.width
+    temp.height = stitchCanvas.height
+    temp.getContext("2d")!.drawImage(stitchCanvas, 0, 0)
+
+    // resize (this clears canvas)
+    stitchCanvas.height = stitchCanvas.height + sliceHeight
+    stitchCtx.drawImage(temp, 0, 0)
+
+    // append new slice
+    stitchCtx.drawImage(
+        sourceCanvas,
+        0, newContentStart,
+        sourceCanvas.width, sliceHeight,
+        0, stitchY,
+        sourceCanvas.width, sliceHeight
+    )
+}
+async function captureFrame(video: HTMLVideoElement, timestamp: number) {
+    const { fullImage, downscaled } = extractFrames(video)
+
+    if (isProbablyBlank(downscaled)) return undefined
+
+    // --- first frame ---
+    if (!lastDownscaledData) {
+        stitchCanvas.width = fullImage.width
+        stitchCanvas.height = fullImage.height
+        stitchCtx.drawImage(fullImage, 0, 0)
+
+        lastDownscaledData = downscaled.data.slice()
+        lastDownscaledImage = downscaled
+
+        return await canvasToBlob(fullImage, timestamp)
     }
 
-    return new Promise<Blob>(resolve => {
-        canvas.toBlob(maybeBlob => {
-            if (maybeBlob) resolve(maybeBlob)
-            throw new Error(`Canvas @ ${timestamp} could not be converted to blob`)
+    // --- diff heuristic ---
+    if (!shouldCaptureFrame(downscaled, lastDownscaledData)) {
+        return undefined
+    }
+
+    // --- overlap detection ---
+    const newContentStart = computeNewRegion(
+        lastDownscaledImage!,
+        downscaled,
+        fullImage.height,
+        downscaled.height
+    )
+
+    // --- stitching ---
+    appendToStitch(fullImage, newContentStart)
+
+    // --- update state ---
+    lastDownscaledData = downscaled.data.slice()
+    lastDownscaledImage = downscaled
+
+    // --- return blob for OCR ---
+    return await canvasToBlob(fullImage, timestamp)
+}
+function canvasToBlob(
+    sourceCanvas: HTMLCanvasElement,
+    timestamp: number
+): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        sourceCanvas.toBlob((blob) => {
+            if (!blob) {
+                reject(new Error(`Canvas @ ${timestamp} could not be converted to blob`))
+                return
+            }
+            resolve(blob)
         })
     })
 }
-
-// Taken directly from pilko studio, assumes no down sampling and works well with a threshold of 35
-function computePixelDiff(data1: ImageDataArray, data2: ImageDataArray, sampleFactor = 4) { let diff = 0; let count = 0; const step = 4 * sampleFactor; for (let i = 0; i < data1.length; i += step) { diff += Math.abs(data1[i] - data2[i]) + Math.abs(data1[i+1] - data2[i+1]) + Math.abs(data1[i+2] - data2[i+2]); count++; } return count > 0 ? (diff / (count * 3)) : 0; }
 
 function isProbablyBlank(imageData: ImageData) {
     const data = imageData.data;
@@ -170,6 +274,75 @@ function isProbablyBlank(imageData: ImageData) {
     const nonBlackRatio = nonBlackCount / totalPixels;
 
     return maxPixel < 10 && nonBlackRatio < 0.005;
+}
+
+type OverlapResult = {
+    matchY: number
+    score: number
+}
+
+/**
+ * Find vertical overlap between two ImageData objects
+ */
+export function findOverlapBand(
+    oldImg: ImageData,
+    newImg: ImageData,
+    options?: {
+        bandHeight?: number
+        sampleStep?: number   // skip pixels for speed (e.g. 2 or 4)
+    }
+): OverlapResult {
+    const { bandHeight = 20, sampleStep = 2 } = options || {}
+
+    const width = oldImg.width
+    const oldData = oldImg.data
+    const newData = newImg.data
+
+    const oldHeight = oldImg.height
+    const newHeight = newImg.height
+
+    if (width !== newImg.width) {
+        throw new Error("Images must have same width")
+    }
+
+    // --- 1. Extract band from bottom of old image ---
+    const bandStartY = oldHeight - bandHeight
+
+    let bestScore = Infinity
+    let bestY = 0
+
+    // --- 2. Slide over new image ---
+    for (let y = 0; y <= newHeight - bandHeight; y++) {
+        let diffSum = 0
+        let count = 0
+
+        for (let by = 0; by < bandHeight; by++) {
+            const oldRow = (bandStartY + by) * width * 4
+            const newRow = (y + by) * width * 4
+
+            for (let x = 0; x < width * 4; x += 4 * sampleStep) {
+                const iOld = oldRow + x
+                const iNew = newRow + x
+
+                // RGB diff (ignore alpha)
+                const dr = oldData[iOld] - newData[iNew]
+                const dg = oldData[iOld + 1] - newData[iNew + 1]
+                const db = oldData[iOld + 2] - newData[iNew + 2]
+
+                diffSum += Math.abs(dr) + Math.abs(dg) + Math.abs(db)
+                count++
+            }
+        }
+
+        const avgDiff = diffSum / count
+
+        if (avgDiff < bestScore) {
+            bestScore = avgDiff
+            bestY = y
+        }
+    }
+
+    return { matchY: bestY, score: bestScore }
 }
 
 /**
