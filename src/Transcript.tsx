@@ -1,13 +1,11 @@
 import {frameCache, useVideoStore} from "./store.ts";
 import {useEffect, useRef, useState} from "react";
 import {createWorker} from "tesseract.js";
-import {ChatDenoiser, useDenoiserReplay} from "./ChatDenoiser.ts";
+import { useDenoiserReplay} from "./ChatDenoiser.ts";
 
 export function Transcript() {
     const [generateTranscript, setGEnerateTranscript] = useState(false);
     const [worker, setWorker] = useState<Awaited<ReturnType<typeof createWorker>> | null>(null)
-    const stitchDataUrl = useVideoStore(s => s.stitchDataUrl);
-
 
     useEffect(() => {
         if (generateTranscript) {
@@ -31,11 +29,40 @@ export function Transcript() {
 
     return <>
         <button className={'button'} onClick={() => setGEnerateTranscript(true)}>Generate transcript</button>
-        {stitchDataUrl && <img src={stitchDataUrl} alt={'stitched chat stream'} />}
+        <StitchedImage />
         {worker ? <OCRReadText worker={worker}/> : <></>}
     </>
 }
 
+function StitchedImage() {
+    const stitchInfo = useVideoStore(s => s.stitchInfo);
+
+    if(!stitchInfo) return <></>
+
+    function downloadCanvas(canvas: HTMLCanvasElement, filename = "chat.png") {
+        canvas.toBlob((blob) => {
+            if (!blob) return
+
+            const url = URL.createObjectURL(blob)
+
+            const a = document.createElement("a")
+            a.href = url
+            a.download = filename
+
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+
+            URL.revokeObjectURL(url)
+        })
+    }
+
+    return <>
+        <button className={'button'} onClick={() => downloadCanvas(stitchInfo.canvasEl)}>Download stitched image</button>
+        <div>Image Size: {stitchInfo.width} x {stitchInfo.height}, {stitchInfo.fileSize} </div>
+        <div style={{maxHeight: "500px", overflow: "auto"}}><img src={stitchInfo.canvasEl.toDataURL()} alt={'stitched chat stream'} /></div>
+    </>
+}
 interface Props {
     worker: Awaited<ReturnType<typeof createWorker>>
 }

@@ -7,6 +7,8 @@ export function FileInput() {
     const [fileState, setFileState] = useState<File | null>(null);
     const {setVideoUrl,setStitchDataUrl, videoSrc, addFrame, setProcessingMeta, processingStartTimestamp, processingEndTimestamp} = useVideoStore();
     const prevUrlRef = useRef<string | null>(null)
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const [videoIsReady, setVideoIsReady] = useState(false);
 
 
     useEffect(() => {
@@ -33,11 +35,25 @@ export function FileInput() {
     }
 
     const onVideoLoaded: ReactEventHandler<HTMLVideoElement> = async (ev) => {
-        console.log('entered')
+        setVideoIsReady(true)
+        const duration = ev.currentTarget.duration
+        setProcessingMeta(duration, .5)
+        // await runVideoProcessing(ev.currentTarget, true)
+    }
 
-        const videoEl = ev.currentTarget
+    async function runVideoProcessing(videoEl: HTMLVideoElement, force = false) {
+        if (!videoIsReady && !force) return;
+
+        resetStitchState()
         const duration = videoEl.duration
         setProcessingMeta(duration, .5)
+
+        fullCanvas.width = videoEl.videoWidth
+        fullCanvas.height = videoEl.videoHeight
+        console.log('asdf', videoEl.videoWidth, videoEl.clientWidth)
+
+        downscaledCanvas.width = Math.floor(videoEl.videoWidth / 10)
+        downscaledCanvas.height = Math.floor(videoEl.videoHeight / 10)
 
         let currentTime = 0
 
@@ -72,7 +88,15 @@ export function FileInput() {
 
             currentTime += 0.5
         }
-        setStitchDataUrl(stitchCanvas.toDataURL('image/png'))
+
+        stitchCanvas.toBlob(blob => {
+            if (!blob) {
+                setStitchDataUrl({fileSize: `?? KB`, height: stitchCanvas.height, width: stitchCanvas.width, canvasEl: stitchCanvas})
+                return;
+            }
+            const kb = (blob.size / 1024).toFixed(1)
+            setStitchDataUrl({fileSize: `${kb} KB`, height: stitchCanvas.height, width: stitchCanvas.width, canvasEl: stitchCanvas})
+        })
     }
 
 
@@ -88,9 +112,20 @@ export function FileInput() {
             <span className="file-name"> {fileState ? fileState.name : ""} </span>
         </label>
         <div>
-            {videoSrc && <video src={videoSrc}  onLoadedMetadata={onVideoLoaded}/>}
+            {videoSrc && <button className={'button'} onClick={() => runVideoProcessing(videoRef.current!)}>Process video upload</button>}
+            {videoSrc && <video ref={videoRef} src={videoSrc} style={{display: 'none'}}  onLoadedMetadata={onVideoLoaded}/>}
         </div>
     </div>
+}
+
+function resetStitchState() {
+    lastDownscaledData = null
+    lastDownscaledImage = null
+
+    stitchCanvas.width = 0
+    stitchCanvas.height = 0
+
+    stitchCtx.clearRect(0, 0, stitchCanvas.width, stitchCanvas.height)
 }
 
 function waitForFrame(video: HTMLVideoElement) {
@@ -117,13 +152,11 @@ const stitchCtx = stitchCanvas.getContext("2d")!
 const fullCanvas = document.createElement("canvas")
 const fullCtx = fullCanvas.getContext("2d")!
 function extractFrames(video: HTMLVideoElement) {
-    fullCanvas.width = video.videoWidth
-    fullCanvas.height = video.videoHeight
-
-    downscaledCanvas.width = Math.floor(video.videoWidth / 10)
-    downscaledCanvas.height = Math.floor(video.videoHeight / 10)
-
-    fullCtx.drawImage(video, 0, 0)
+    fullCtx.drawImage(
+        video,
+        0, 0, video.videoWidth, video.videoHeight,  // source (true pixels)
+        0, 0, fullCanvas.width, fullCanvas.height   // destination
+    )
     downscaledCtx.drawImage(video, 0, 0, downscaledCanvas.width, downscaledCanvas.height)
 
     return {

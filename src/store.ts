@@ -37,8 +37,13 @@ interface VideoState {
 
     transcriptInfo: Record<number, Page>
     setTranscriptInfo: (frameId: number, page: Page) => void,
-    stitchDataUrl: string,
-    setStitchDataUrl: (str: string) => void
+    stitchInfo: {
+        canvasEl: HTMLCanvasElement,
+        fileSize: string,
+        width: number,
+        height: number
+    } | null
+    setStitchDataUrl: (input: VideoState['stitchInfo']) => void
 }
 
 // Create store using the curried form of `create`
@@ -56,7 +61,7 @@ export const useVideoStore = create<VideoState>()((set) => ({
         })
     }
    )),
-    setProcessingMeta: ((videoDuration, samplingRate) => set(() => ({videoDuration, samplingRate}))),
+    setProcessingMeta: ((videoDuration, samplingRate) => set(() => ({videoDuration, samplingRate, processingEndTimestamp: videoDuration}))),
 
     nextOcrFrame: 0,
     setNextOcrFrameToProcess: input => set(() => ({nextOcrFrame: input})),
@@ -73,8 +78,8 @@ export const useVideoStore = create<VideoState>()((set) => ({
         transcriptInfo: {...s.transcriptInfo, [frameId]: page}
     })),
 
-    stitchDataUrl: "",
-    setStitchDataUrl: (stitchDataUrl: string) => set(() => ({stitchDataUrl}))
+    stitchInfo: null,
+    setStitchDataUrl: (stitchInfo) => set(() => ({stitchInfo}))
 }))
 
 export const frameCache = new Map<number, Blob>()
