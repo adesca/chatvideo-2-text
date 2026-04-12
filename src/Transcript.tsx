@@ -1,6 +1,7 @@
 import {frameCache, useVideoStore} from "./store.ts";
 import {useEffect, useRef, useState} from "react";
 import {createWorker} from "tesseract.js";
+import {ChatDenoiser, useDenoiserReplay} from "./ChatDenoiser.ts";
 
 export function Transcript() {
     const [worker, setWorker] = useState<Awaited<ReturnType<typeof createWorker>> | null>(null)
@@ -33,16 +34,15 @@ interface Props {
 }
 
 function OCRReadText({worker}: Props) {
-    const [text, setText] = useState<string[]>([])
-    const [totalFrames, setTotalFrames] = useState<number>(0)
+    const transcriptInfo = useVideoStore(s => s.transcriptInfo);
     const processed = useRef(new Set());
+    const {frames} = useDenoiserReplay(transcriptInfo)
+    console.log('frames', frames.length)
 
 
     useEffect(() => {
-        const unsub = useVideoStore.subscribe(({frames, nextOcrFrame, setNextOcrFrameToProcess, setProcessedCount}) => {
-            return;
+        const unsub = useVideoStore.subscribe(({frames, nextOcrFrame, setNextOcrFrameToProcess, setProcessedCount, setTranscriptInfo}) => {
             if (frames.length <= nextOcrFrame) return;
-            setTotalFrames(frames.length)
             if (processed.current.has(nextOcrFrame)) return;
             processed.current.add(nextOcrFrame);
             setProcessedCount(processed.current.size)
@@ -50,11 +50,9 @@ function OCRReadText({worker}: Props) {
             worker.recognize(frameCache.get(frames[nextOcrFrame].timestamp), {}, {
                 blocks: true,
             }).then(res => {
+                console.log('executed')
                 setNextOcrFrameToProcess(nextOcrFrame + 1)
-
-                if (res.data.text.length > 0) {
-                    setText(curr => ([...curr, res.data.text]))
-                }
+                setTranscriptInfo(nextOcrFrame, res.data)
             })
 
         });
@@ -62,11 +60,16 @@ function OCRReadText({worker}: Props) {
         return () => unsub()
     });
 
+    console.log('frames for render', frames)
     return <>
         <div style={{overflow: 'auto', height: "100vh"}}>
-            {text.map(t => <div className={'block'} key={t}>
-                {t}
-            </div>)}
+            {frames.map(f => {
+                return <div key={f.frameId}>
+                    <ul>
+                        {f.added.map(a => <li key={a}>{a}</li>)}
+                    </ul>
+                </div>
+            })}
         </div>
 
     </>

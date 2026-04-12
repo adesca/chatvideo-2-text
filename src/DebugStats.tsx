@@ -1,5 +1,7 @@
 import {useVideoStore} from "./store.ts";
 import {useShallow} from "zustand/react/shallow";
+import {useState} from "react";
+import {ChatDenoiser, useDenoiserReplay} from "./ChatDenoiser.ts";
 
 export function DebugStats() {
     const {videoDuration, samplingRate, frames, processedCount, processingStartTimestamp, processingEndTimestamp, setProcessingStartTimestamp, setProcessingEndTimestamp} = useVideoStore(
@@ -23,10 +25,12 @@ export function DebugStats() {
         {<h2>Stats for nerds</h2>}
         <div>
             Process timestamps from
-            <input type={'number'} onChange={e => setProcessingStartTimestamp(+e.currentTarget.value)} value={processingStartTimestamp}/> s
+            <input type={'number'} onChange={e => setProcessingStartTimestamp(+e.currentTarget.value)}
+                   value={processingStartTimestamp}/> s
             to
-            <input type={'number'} onChange={e => setProcessingEndTimestamp(+e.currentTarget.value)} value={processingEndTimestamp}/> s,
-            sampling every  {samplingRate} s
+            <input type={'number'} onChange={e => setProcessingEndTimestamp(+e.currentTarget.value)}
+                   value={processingEndTimestamp}/> s,
+            sampling every {samplingRate} s
         </div>
         {sampleDebug}
         <div>{frames.length} unique frames identified</div>
@@ -35,7 +39,35 @@ export function DebugStats() {
             {(processedCount / frames.length) * 100}%
         </progress>
         Finished running OCR for {processedCount} frames of {frames.length}
-
-
+        <DebugLog/>
     </>
+}
+
+const denoiser = new ChatDenoiser();
+function DebugLog() {
+    const transcriptInfo = useVideoStore(s => s.transcriptInfo)
+    const [runningLog, setRunningLog] = useState<string[]>([])
+
+    const {frames} = useDenoiserReplay(transcriptInfo);
+    let text = '';
+
+    frames.forEach(f => {
+        text += `Frame #${f.frameId}
+ -----------
+ 
+ DECISIONS:
+ + (new, accepted)
+  - ${f.added.join('- ')} 
+ - (duplicate, ignored)
+
+`
+    })
+
+
+    // console.log('text---asdf', text)
+
+    // console.log(denoiser.getState());
+    // const text = denoiser.getState().lines.join('\n');
+
+    return  <textarea className={'textarea'} style={{height: '200px', overflowY: 'auto', fontFamily: 'monospace'}} value={text} />
 }

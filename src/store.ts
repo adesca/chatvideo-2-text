@@ -1,5 +1,6 @@
 // zustand store
 import {create} from "zustand/react";
+import type {Page} from "tesseract.js";
 
 type Frame = {
     // id: number
@@ -33,6 +34,9 @@ interface VideoState {
     processingEndTimestamp: number,
     setProcessingStartTimestamp: (ts: number) => void,
     setProcessingEndTimestamp: (ts: number) => void
+
+    transcriptInfo: Record<number, Page>
+    setTranscriptInfo: (frameId: number, page: Page) => void
 }
 
 // Create store using the curried form of `create`
@@ -61,7 +65,11 @@ export const useVideoStore = create<VideoState>()((set) => ({
     processingStartTimestamp: 0,
     processingEndTimestamp: 5,
     setProcessingStartTimestamp: processingStartTimestamp => set(() => ({processingStartTimestamp})),
-    setProcessingEndTimestamp: processingEndTimestamp => set(() => ({processingEndTimestamp}))
+    setProcessingEndTimestamp: processingEndTimestamp => set(() => ({processingEndTimestamp})),
+    transcriptInfo: {},
+    setTranscriptInfo: (frameId, page) => set((s) => ({
+        transcriptInfo: {...s.transcriptInfo, [frameId]: page}
+    }))
 }))
 
 export const frameCache = new Map<number, Blob>()
