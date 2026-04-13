@@ -5,10 +5,9 @@ export function ProcessedFrames() {
 
 
     return <>
-        <div><button className={'button is-dark'} onClick={() => generateFrames(frames.map(f => f.timestamp))}>Stitch chat together</button></div>
-        <div className={'is-flex is-flex-direction-row'} >
-            {frames.map(frame => <img style={{maxWidth: '200px'}}
+      <div className={'is-flex is-flex-direction-row'} >
+            {frames.map(frame => <img style={{maxWidth: '200px'}} key={frame.timestamp}
                 src={URL.createObjectURL(frameCache.get(frame.timestamp)!)} alt={`a frame at ${frame.timestamp} s`} />)}
-        </div>
+      </div>
     </>
 }

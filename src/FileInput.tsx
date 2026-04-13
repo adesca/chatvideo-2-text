@@ -1,14 +1,23 @@
 import {type ChangeEventHandler, type ReactEventHandler, useEffect, useRef, useState} from "react";
 import {frameCache, useVideoStore} from "./store.ts";
 
-const canvas = document.createElement('canvas')
 
 export function FileInput() {
     const [fileState, setFileState] = useState<File | null>(null);
-    const {setVideoUrl,setStitchDataUrl, videoSrc, addFrame, setProcessingMeta, processingStartTimestamp, processingEndTimestamp} = useVideoStore();
+    const {
+        setVideoUrl,
+        setStitchDataUrl,
+        videoSrc,
+        addFrame,
+        setProcessingMeta,
+        setVideoProcessHandler,
+        processingStartTimestamp,
+        processingEndTimestamp,
+        incrementProcessCount
+    } = useVideoStore();
     const prevUrlRef = useRef<string | null>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
-    const [videoIsReady, setVideoIsReady] = useState(false);
+    const [userAttemptedUploadAgain, setUserAttemptedUploadAgain] = useState(false);
 
 
     useEffect(() => {
@@ -29,24 +38,36 @@ export function FileInput() {
         const file = ev.currentTarget.files?.[0];
         if (!file) return;
 
+        if (videoSrc) {
+            setUserAttemptedUploadAgain(true);
+            return;
+        }
+
         setFileState(file);
         const freshBlob = new Blob([await file.arrayBuffer()], {type: file.type})
         setVideoUrl(URL.createObjectURL(freshBlob))
     }
 
     const onVideoLoaded: ReactEventHandler<HTMLVideoElement> = async (ev) => {
-        setVideoIsReady(true)
-        const duration = ev.currentTarget.duration
+        const duration = Math.ceil(ev.currentTarget.duration)
         setProcessingMeta(duration, .5)
+        setVideoProcessHandler(() => {
+            console.log('here', videoRef.current)
+            if (videoRef.current) {
+                runVideoProcessing(videoRef.current)
+            } else {
+                console.error("User ran processing before video was hooked up")
+            }
+        })
         // await runVideoProcessing(ev.currentTarget, true)
     }
 
-    async function runVideoProcessing(videoEl: HTMLVideoElement, force = false) {
-        if (!videoIsReady && !force) return;
+    async function runVideoProcessing(videoEl: HTMLVideoElement) {
+        if (!document.getElementsByName('video')) return;
+        const {processingStartTimestamp, processingEndTimestamp } =  useVideoStore.getState();
 
         resetStitchState()
         const duration = videoEl.duration
-        setProcessingMeta(duration, .5)
 
         fullCanvas.width = videoEl.videoWidth
         fullCanvas.height = videoEl.videoHeight
@@ -86,34 +107,49 @@ export function FileInput() {
                 console.log('Skipped storing frame @ ', currentTime, ' because it\'s too similar to the previous frame');
             }
 
+            incrementProcessCount(1)
             currentTime += 0.5
         }
 
         stitchCanvas.toBlob(blob => {
             if (!blob) {
-                setStitchDataUrl({fileSize: `?? KB`, height: stitchCanvas.height, width: stitchCanvas.width, canvasEl: stitchCanvas})
+                setStitchDataUrl({
+                    fileSize: `?? KB`,
+                    height: stitchCanvas.height,
+                    width: stitchCanvas.width,
+                    canvasEl: stitchCanvas
+                })
                 return;
             }
             const kb = (blob.size / 1024).toFixed(1)
-            setStitchDataUrl({fileSize: `${kb} KB`, height: stitchCanvas.height, width: stitchCanvas.width, canvasEl: stitchCanvas})
+            setStitchDataUrl({
+                fileSize: `${kb} KB`,
+                height: stitchCanvas.height,
+                width: stitchCanvas.width,
+                canvasEl: stitchCanvas
+            })
         })
     }
 
 
-    return  <div className="file has-name is-boxed">
-        <label className="file-label">
-            <input className="file-input" type="file" onChange={handler}/>
-            <span className="file-cta">
+    console.log('pr', processingStartTimestamp, processingEndTimestamp)
+    return <div className="">
+        <div className={'file has-name is-boxed'}>
+            <label className="file-label">
+                <input className="file-input" type="file" onChange={handler}/>
+                <span className="file-cta">
               <span className="file-icon">
                 <i className="fas fa-upload"></i>
               </span>
                 <span className="file-label"> Choose a file… </span>
             </span>
-            <span className="file-name"> {fileState ? fileState.name : ""} </span>
-        </label>
+                <span className="file-name"> Selected file: {fileState ? fileState.name : ""} </span>
+            </label>
+            {videoSrc && <video ref={videoRef} src={videoSrc} style={{display: 'none'}} onLoadedMetadata={onVideoLoaded}/>}
+        </div>
+
         <div>
-            {videoSrc && <button className={'button'} onClick={() => runVideoProcessing(videoRef.current!)}>Process video upload</button>}
-            {videoSrc && <video ref={videoRef} src={videoSrc} style={{display: 'none'}}  onLoadedMetadata={onVideoLoaded}/>}
+            {userAttemptedUploadAgain && <div className={'notification is-warning'}>Please click ‘Start over’ before uploading a new video</div>}
         </div>
     </div>
 }
@@ -151,6 +187,7 @@ const stitchCtx = stitchCanvas.getContext("2d")!
 
 const fullCanvas = document.createElement("canvas")
 const fullCtx = fullCanvas.getContext("2d")!
+
 function extractFrames(video: HTMLVideoElement) {
     fullCtx.drawImage(
         video,
@@ -164,6 +201,7 @@ function extractFrames(video: HTMLVideoElement) {
         downscaled: downscaledCtx.getImageData(0, 0, downscaledCanvas.width, downscaledCanvas.height)
     }
 }
+
 function shouldCaptureFrame(
     current: ImageData,
     prevData: Uint8ClampedArray | null,
@@ -181,13 +219,14 @@ function shouldCaptureFrame(
 
     return diff >= threshold
 }
+
 function computeNewRegion(
     prev: ImageData,
     curr: ImageData,
     fullHeight: number,
     downscaledHeight: number
 ) {
-    const { matchY } = findOverlapBand(prev, curr)
+    const {matchY} = findOverlapBand(prev, curr)
     const bandHeight = 20
 
     const scale = fullHeight / downscaledHeight
@@ -196,6 +235,7 @@ function computeNewRegion(
 
     return newContentStart
 }
+
 function appendToStitch(
     sourceCanvas: HTMLCanvasElement,
     newContentStart: number
@@ -225,8 +265,9 @@ function appendToStitch(
         sourceCanvas.width, sliceHeight
     )
 }
+
 async function captureFrame(video: HTMLVideoElement, timestamp: number) {
-    const { fullImage, downscaled } = extractFrames(video)
+    const {fullImage, downscaled} = extractFrames(video)
 
     if (isProbablyBlank(downscaled)) return undefined
 
@@ -265,6 +306,7 @@ async function captureFrame(video: HTMLVideoElement, timestamp: number) {
     // --- return blob for OCR ---
     return await canvasToBlob(fullImage, timestamp)
 }
+
 function canvasToBlob(
     sourceCanvas: HTMLCanvasElement,
     timestamp: number
@@ -325,7 +367,7 @@ export function findOverlapBand(
         sampleStep?: number   // skip pixels for speed (e.g. 2 or 4)
     }
 ): OverlapResult {
-    const { bandHeight = 20, sampleStep = 2 } = options || {}
+    const {bandHeight = 20, sampleStep = 2} = options || {}
 
     const width = oldImg.width
     const oldData = oldImg.data
@@ -375,7 +417,7 @@ export function findOverlapBand(
         }
     }
 
-    return { matchY: bestY, score: bestScore }
+    return {matchY: bestY, score: bestScore}
 }
 
 /**

@@ -28,7 +28,8 @@ export function Transcript() {
 
 
     return <>
-        <button className={'button'} onClick={() => setGEnerateTranscript(true)}>Generate transcript</button>
+        {/*<button className={'button'} onClick={() => setGEnerateTranscript(true)}>Generate transcript</button>*/}
+        <strong>3. Results</strong>
         <StitchedImage />
         {worker ? <OCRReadText worker={worker}/> : <></>}
     </>
@@ -74,11 +75,11 @@ function OCRReadText({worker}: Props) {
 
 
     useEffect(() => {
-        const unsub = useVideoStore.subscribe(({frames, nextOcrFrame, setNextOcrFrameToProcess, setProcessedCount, setTranscriptInfo}) => {
+        const unsub = useVideoStore.subscribe(({frames, nextOcrFrame, setNextOcrFrameToProcess, incrementProcessCount, setTranscriptInfo}) => {
             if (frames.length <= nextOcrFrame) return;
             if (processed.current.has(nextOcrFrame)) return;
             processed.current.add(nextOcrFrame);
-            setProcessedCount(processed.current.size)
+            incrementProcessCount(processed.current.size)
 
             worker.recognize(frameCache.get(frames[nextOcrFrame].timestamp), {}, {
                 blocks: true,

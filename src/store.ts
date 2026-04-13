@@ -11,6 +11,8 @@ type Frame = {
 interface VideoState {
     videoSrc: string,
     setVideoUrl: (url: string) => void,
+    setVideoProcessHandler: (inputFn: VideoState['videoProcessHandler']) => void,
+    videoProcessHandler: (() => void) | undefined,
     videoDuration: number,
     samplingRate: number,
 
@@ -28,7 +30,7 @@ interface VideoState {
     nextOcrFrame: number,
     setNextOcrFrameToProcess: (input: number) => void
     processedCount: number,
-    setProcessedCount: (input: number) => void,
+    incrementProcessCount: (input: number) => void,
 
     processingStartTimestamp: number,
     processingEndTimestamp: number,
@@ -61,13 +63,15 @@ export const useVideoStore = create<VideoState>()((set) => ({
         })
     }
    )),
-    setProcessingMeta: ((videoDuration, samplingRate) => set(() => ({videoDuration, samplingRate, processingEndTimestamp: videoDuration}))),
+    setProcessingMeta: ((videoDuration, samplingRate) => set(() => (
+        {videoDuration, samplingRate, processingEndTimestamp: videoDuration, processingStartTimestamp: 0}
+    ))),
 
     nextOcrFrame: 0,
     setNextOcrFrameToProcess: input => set(() => ({nextOcrFrame: input})),
 
     processedCount: 0,
-    setProcessedCount: processedCount => set(() => ({processedCount})),
+    incrementProcessCount: increment => set((s) => ({processedCount: s.processedCount + increment})),
 
     processingStartTimestamp: 0,
     processingEndTimestamp: 5,
@@ -79,7 +83,10 @@ export const useVideoStore = create<VideoState>()((set) => ({
     })),
 
     stitchInfo: null,
-    setStitchDataUrl: (stitchInfo) => set(() => ({stitchInfo}))
+    setStitchDataUrl: (stitchInfo) => set(() => ({stitchInfo})),
+
+    videoProcessHandler: undefined,
+    setVideoProcessHandler: (videoProcessHandler) => set(() => ({videoProcessHandler})),
 }))
 
 export const frameCache = new Map<number, Blob>()
