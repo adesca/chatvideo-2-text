@@ -1,5 +1,5 @@
 import {type ChangeEventHandler, type ReactEventHandler, useEffect, useRef, useState} from "react";
-import {frameCache, useVideoStore} from "./store.ts";
+import {frameCache, frameSliceCache, useVideoStore} from "./store.ts";
 
 
 export function FileInput() {
@@ -71,7 +71,6 @@ export function FileInput() {
 
         fullCanvas.width = videoEl.videoWidth
         fullCanvas.height = videoEl.videoHeight
-        console.log('asdf', videoEl.videoWidth, videoEl.clientWidth)
 
         downscaledCanvas.width = Math.floor(videoEl.videoWidth / 10)
         downscaledCanvas.height = Math.floor(videoEl.videoHeight / 10)
@@ -101,7 +100,7 @@ export function FileInput() {
 
             const maybeBlob = await captureFrame(videoEl, currentTime)
             if (maybeBlob) {
-                frameCache.set(currentTime, maybeBlob);
+                frameCache.set(currentTime, {blob: maybeBlob, url: URL.createObjectURL(maybeBlob)});
                 addFrame(currentTime)
             } else {
                 console.log('Skipped storing frame @ ', currentTime, ' because it\'s too similar to the previous frame');
@@ -238,7 +237,8 @@ function computeNewRegion(
 
 function appendToStitch(
     sourceCanvas: HTMLCanvasElement,
-    newContentStart: number
+    newContentStart: number,
+    timestamp: number
 ) {
     const sliceHeight = sourceCanvas.height - newContentStart
 
@@ -255,6 +255,21 @@ function appendToStitch(
     // resize (this clears canvas)
     stitchCanvas.height = stitchCanvas.height + sliceHeight
     stitchCtx.drawImage(temp, 0, 0)
+
+    const toStitchCanvas = document.createElement('canvas');
+    toStitchCanvas.width = sourceCanvas.width;
+    toStitchCanvas.height = sliceHeight;
+    const toStitchCtx = toStitchCanvas.getContext('2d')!;
+    toStitchCtx.drawImage(sourceCanvas,
+        0, newContentStart,
+        sourceCanvas.width, sliceHeight,
+        0,0,
+        sourceCanvas.width, sliceHeight);
+    console.log('trying to canvasToBlob ')
+    canvasToBlob(toStitchCanvas, timestamp).then(blob => {
+        console.log('here with ', timestamp, blob)
+        frameSliceCache.set(timestamp, {blob, url: URL.createObjectURL(blob)})
+    })
 
     // append new slice
     stitchCtx.drawImage(
@@ -297,7 +312,7 @@ async function captureFrame(video: HTMLVideoElement, timestamp: number) {
     )
 
     // --- stitching ---
-    appendToStitch(fullImage, newContentStart)
+    appendToStitch(fullImage, newContentStart, timestamp)
 
     // --- update state ---
     lastDownscaledData = downscaled.data.slice()
@@ -311,6 +326,7 @@ function canvasToBlob(
     sourceCanvas: HTMLCanvasElement,
     timestamp: number
 ): Promise<Blob> {
+    console.log('canvas to blob')
     return new Promise((resolve, reject) => {
         sourceCanvas.toBlob((blob) => {
             if (!blob) {

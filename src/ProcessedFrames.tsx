@@ -1,10 +1,11 @@
-import {frameCache, useVideoStore} from "./store.ts";
+import {frameCache, frameSliceCache, useVideoStore} from "./store.ts";
 import {useState} from "react";
 
 export function ProcessedFrames() {
     const frames = useVideoStore(s => s.frames)
     const [showFrames, setShowFrames] = useState<boolean>(false);
 
+    console.log('frames ', frames.map(f => f.timestamp), frameSliceCache.size)
 
     return <>
         <label className={'checkbox'}>
@@ -20,15 +21,22 @@ export function ProcessedFrames() {
             }}
         >
             {frames.map(frame => (
-                <img
-                    key={frame.timestamp}
-                    src={URL.createObjectURL(frameCache.get(frame.timestamp)!)}
-                    alt={`a frame at ${frame.timestamp} s`}
-                    style={{
-                        maxWidth: '200px',
-                        flex: '0 0 auto' // 👈 critical: prevents shrinking
-                    }}
-                />
+                <div key={frame.timestamp}>
+                    <div style={{maxWidth: '250px', flex: '0 0 250px'}}>
+                        {frame.timestamp} s
+                        <img
+                            src={frameCache.get(frame.timestamp)!.url}
+                            alt={`a frame at ${frame.timestamp} s`}
+                            className={'pb-2'}
+                            style={{width: '100%'}}
+                        />
+                        {frameSliceCache.get(frame.timestamp) && <img
+                            src={frameSliceCache.get(frame.timestamp)!.url}
+                            alt={`A frame slice from ${frame.timestamp} s`}
+                            style={{width: '100%'}}
+                            />}
+                    </div>
+                </div>
             ))}
         </div>}
     </>

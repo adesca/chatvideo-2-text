@@ -89,5 +89,7 @@ export const useVideoStore = create<VideoState>()((set) => ({
     setVideoProcessHandler: (videoProcessHandler) => set(() => ({videoProcessHandler})),
 }))
 
-export const frameCache = new Map<number, Blob>()
+// todo: revoke blob urls on clear
+export const frameCache = new Map<number, { blob: Blob, url: string }>()
+export const frameSliceCache = new Map<number, { blob: Blob, url: string }>()
 export const imageDataCache = new Map<number, ImageData>
