@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Luminance Analyzer</title>
+	<style>
+        body { font-family: sans-serif; padding: 20px; }
+        canvas { border: 1px solid #ccc; margin-top: 10px; display:block; }
+        table { border-collapse: collapse; font-size: 10px; margin-top: 10px; }
+        td, th { border: 1px solid #ddd; padding: 2px; text-align: center; }
+        tr:hover { background: #f5f5f5; cursor: pointer; }
+	</style>
+</head>
+<body>
+
+<h2>Luminance Analyzer</h2>
+
+<input type="file" id="fileInput" accept="image/*">
+
+<div>
+	Formula:
+	<select id="formula">
+		<option value="perceived">Perceived (0.21R + 0.72G + 0.07B)</option>
+		<option value="sum">Sum (R + G + B)</option>
+		<option value="avg">Average ((R+G+B)/3)</option>
+		<option value="red">Red channel</option>
+	</select>
+
+	<label>
+		<input type="checkbox" id="showTable"> Show table
+	</label>
+</div>
+
+<img id="preview" style="max-width:400px; display:block; margin-top:10px;">
+
+<h3>Heatmap</h3>
+<canvas id="heatmap"></canvas>
+
+<h3>Row Averages</h3>
+<canvas id="rowChart" height="100"></canvas>
+
+<h3>Row Histogram (click a row)</h3>
+<canvas id="histogram" height="120"></canvas>
+
+<div id="tableContainer"></div>
+
+<script>
+    const MAX_PIXELS = 200000;
+
+    const input = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const heatmap = document.getElementById('heatmap');
+    const heatCtx = heatmap.getContext('2d');
+    const rowChart = document.getElementById('rowChart');
+    const rowCtx = rowChart.getContext('2d');
+    const histogramCanvas = document.getElementById('histogram');
+    const histogramCtx = histogramCanvas.getContext('2d');
+
+    let currentData = null;
+    let width, height;
+    let selectedRow = null;
+
+    input.addEventListener('change', () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        const img = new Image();
+        img.onload = () => {
+            preview.src = img.src;
+
+            let scale = 1;
+            if (img.width * img.height > MAX_PIXELS) {
+                scale = Math.sqrt(MAX_PIXELS / (img.width * img.height));
+            }
+
+            width = Math.floor(img.width * scale);
+            height = Math.floor(img.height * scale);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(img, 0, 0, width, height);
+
+            currentData = ctx.getImageData(0, 0, width, height).data;
+
+            process();
+        };
+
+        img.src = URL.createObjectURL(file);
+    });
+
+    document.getElementById('formula').addEventListener('change', process);
+    document.getElementById('showTable').addEventListener('change', process);
+
+    function getLuminance(r, g, b) {
+        const mode = document.getElementById('formula').value;
+
+        switch (mode) {
+            case 'sum': return r + g + b;
+            case 'avg': return (r + g + b) / 3;
+            case 'red': return r;
+            default: return 0.21*r + 0.72*g + 0.07*b;
+        }
+    }
+
+    function process() {
+        if (!currentData) return;
+
+        drawHeatmap();
+        drawRowAverages();
+
+        if (selectedRow !== null) {
+            drawHistogram(selectedRow);
+        }
+
+        if (document.getElementById('showTable').checked) {
+            drawTable();
+        } else {
+            document.getElementById('tableContainer').innerHTML = '';
+        }
+    }
+
+    function drawHeatmap() {
+        heatmap.width = width;
+        heatmap.height = height;
+
+        const imgData = heatCtx.createImageData(width, height);
+
+        for (let i = 0; i < currentData.length; i += 4) {
+            const r = currentData[i];
+            const g = currentData[i+1];
+            const b = currentData[i+2];
+
+            const lum = getLuminance(r,g,b);
+            const val = Math.min(255, lum);
+
+            imgData.data[i] = val;
+            imgData.data[i+1] = val;
+            imgData.data[i+2] = val;
+            imgData.data[i+3] = 255;
+        }
+
+        heatCtx.putImageData(imgData, 0, 0);
+    }
+
+    function drawRowAverages() {
+        const averages = [];
+
+        let maxVal = 255;
+        if (document.getElementById('formula').value === 'sum') {
+            maxVal = 765;
+        }
+
+        for (let y = 0; y < height; y++) {
+            let sum = 0;
+
+            for (let x = 0; x < width; x++) {
+                const i = (y * width + x) * 4;
+                sum += getLuminance(
+                    currentData[i],
+                    currentData[i+1],
+                    currentData[i+2]
+                );
+            }
+
+            averages.push(sum / width);
+        }
+
+        rowChart.width = width;
+        rowCtx.clearRect(0,0,rowChart.width,rowChart.height);
+
+        rowCtx.beginPath();
+
+        averages.forEach((val, i) => {
+            const y = rowChart.height - (val / maxVal) * rowChart.height;
+            if (i === 0) rowCtx.moveTo(i, y);
+            else rowCtx.lineTo(i, y);
+        });
+
+        rowCtx.stroke();
+    }
+
+    function drawTable() {
+        const table = document.createElement('table');
+
+        // header
+        const header = document.createElement('tr');
+        for (let x = 0; x < width; x++) {
+            const th = document.createElement('th');
+            th.textContent = x;
+            header.appendChild(th);
+        }
+        header.innerHTML += '<th>Sum</th><th>Avg</th>';
+        table.appendChild(header);
+
+        for (let y = 0; y < height; y++) {
+            const tr = document.createElement('tr');
+
+            if (y === selectedRow) {
+                tr.style.background = '#ffd';
+            }
+
+            let rowSum = 0;
+
+            for (let x = 0; x < width; x++) {
+                const i = (y * width + x) * 4;
+
+                const lum = getLuminance(
+                    currentData[i],
+                    currentData[i+1],
+                    currentData[i+2]
+                );
+
+                rowSum += lum;
+
+                const td = document.createElement('td');
+                td.textContent = lum.toFixed(0);
+                tr.appendChild(td);
+            }
+
+            const sumTd = document.createElement('td');
+            sumTd.textContent = rowSum.toFixed(0);
+            sumTd.style.fontWeight = 'bold';
+            sumTd.style.background = '#eef';
+            tr.appendChild(sumTd);
+
+            const avg = rowSum / width;
+            const avgTd = document.createElement('td');
+            avgTd.textContent = avg.toFixed(1);
+            avgTd.style.fontWeight = 'bold';
+            avgTd.style.background = '#efe';
+            tr.appendChild(avgTd);
+
+            tr.addEventListener('click', () => {
+                selectedRow = y;
+                process();
+            });
+
+            table.appendChild(tr);
+        }
+
+        const container = document.getElementById('tableContainer');
+        container.innerHTML = '';
+        container.appendChild(table);
+    }
+
+    function drawHistogram(row) {
+        const bins = 50;
+        const histogram = new Array(bins).fill(0);
+
+        let maxLum = 255;
+        if (document.getElementById('formula').value === 'sum') {
+            maxLum = 765;
+        }
+
+        for (let x = 0; x < width; x++) {
+            const i = (row * width + x) * 4;
+
+            const lum = getLuminance(
+                currentData[i],
+                currentData[i+1],
+                currentData[i+2]
+            );
+
+            const bin = Math.floor((lum / maxLum) * (bins - 1));
+            histogram[bin]++;
+        }
+
+        histogramCanvas.width = width;
+        histogramCtx.clearRect(0, 0, histogramCanvas.width, histogramCanvas.height);
+
+        const maxCount = Math.max(...histogram);
+
+        histogram.forEach((count, i) => {
+            const x = (i / bins) * histogramCanvas.width;
+            const barWidth = histogramCanvas.width / bins;
+            const h = (count / maxCount) * histogramCanvas.height;
+
+            histogramCtx.fillRect(
+                x,
+                histogramCanvas.height - h,
+                barWidth,
+                h
+            );
+        });
+    }
+</script>
+
+</body>
+</html>

@@ -5,8 +5,6 @@ export function ProcessedFrames() {
     const frames = useVideoStore(s => s.frames)
     const [showFrames, setShowFrames] = useState<boolean>(false);
 
-    console.log('frames ', frames.map(f => f.timestamp), frameSliceCache.size)
-
     return <>
         <label className={'checkbox'}>
             <input type={'checkbox'} onChange={() => setShowFrames(s => !s)}/> Show sampled frames
