@@ -141,9 +141,9 @@ export function FileInput() {
               <span className="file-icon">
                 <i className="fas fa-upload"></i>
               </span>
-                <span className="file-label"> Choose a file… </span>
+                <span className="file-label"> Upload video file… </span>
             </span>
-                <span className="file-name"> Selected file: {fileState ? fileState.name : ""} </span>
+                <span className="file-name"> Selected file: <strong>{fileState ? fileState.name : ""}</strong> </span>
             </label>
             {videoSrc && <video ref={videoRef} src={videoSrc} style={{display: 'none'}} onLoadedMetadata={onVideoLoaded}/>}
         </div>

@@ -29,7 +29,7 @@ export function Transcript() {
 
     return <>
         {/*<button className={'button'} onClick={() => setGEnerateTranscript(true)}>Generate transcript</button>*/}
-        <strong>3. Results</strong>
+        <strong>3. Final Stitched Screenshot</strong>
         <StitchedImage />
         {worker ? <OCRReadText worker={worker}/> : <></>}
     </>
@@ -59,7 +59,9 @@ function StitchedImage() {
     }
 
     return <>
-        <button className={'button'} onClick={() => downloadCanvas(stitchInfo.canvasEl)}>Download stitched image</button>
+        <div>
+            <button className={'button'} onClick={() => downloadCanvas(stitchInfo.canvasEl)}>Download stitched image</button>
+        </div>
         <div>Image Size: {stitchInfo.width} x {stitchInfo.height}, {stitchInfo.fileSize} </div>
         <div style={{maxHeight: "500px", overflow: "auto"}}><img src={stitchInfo.canvasEl.toDataURL()} alt={'stitched chat stream'} /></div>
     </>
@@ -84,7 +86,6 @@ function OCRReadText({worker}: Props) {
             worker.recognize(frameCache.get(frames[nextOcrFrame].timestamp), {}, {
                 blocks: true,
             }).then(res => {
-                console.log('executed')
                 setNextOcrFrameToProcess(nextOcrFrame + 1)
                 setTranscriptInfo(nextOcrFrame, res.data)
             })

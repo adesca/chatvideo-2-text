@@ -13,6 +13,7 @@ export function DebugStats() {
             stitchInfo: s.stitchInfo
         }))
     )
+    const [isVisible, setIsVisible] = useState<boolean>(false);
 
 
     let sampleDebug = <></>
@@ -22,23 +23,36 @@ export function DebugStats() {
     }
 
     return <>
-        {<strong>Stats for nerds</strong>}
-        <div>
-            Process timestamps from
-            <input type={'number'} className={'input is-small mx-1'}  value={processingStartTimestamp} style={{width: '50px'}}
-                   onChange={e => setProcessingStartTimestamp(+e.currentTarget.value)}/> s
-            to
-            <input type={'number'} className={'input is-small mx-1'} value={processingEndTimestamp} style={{width: '50px'}}
-                   onChange={e => setProcessingEndTimestamp(+e.currentTarget.value)}/> s,
-            sampling every {samplingRate} s
+        <div className={'card'}>
+            <header className={'card-header'} onClick={() => setIsVisible(v => !v)}>
+                <p className={'card-header-title'}>Stats for nerds</p>
+                <button className="card-header-icon" aria-label="more options">
+                    {isVisible && "^"}
+                    {!isVisible && "v"}
+                </button>
+            </header>
+            {isVisible && <div className="card-content">
+                <div className="content">
+                    <div>
+                        Process timestamps from
+                        <input type={'number'} className={'input is-small mx-1'} value={processingStartTimestamp}
+                               style={{width: '50px'}}
+                               onChange={e => setProcessingStartTimestamp(+e.currentTarget.value)}/> s
+                        to
+                        <input type={'number'} className={'input is-small mx-1'} value={processingEndTimestamp} style={{width: '50px'}}
+                               onChange={e => setProcessingEndTimestamp(+e.currentTarget.value)}/> s,
+                        sampling every {samplingRate} s
+                    </div>
+                    {sampleDebug}
+                    <div>{frames.length} unique frames identified</div>
+                    {(processedCount > 0 && !stitchInfo) &&  <div>Processed {processedCount} timestamps</div>}
+                    {stitchInfo && <div>Finished processing video</div>}
+                    {(processedCount > 0 && !stitchInfo) && <progress className="progress is-link">15%</progress>}
+                </div>
+            </div>}
         </div>
-        {sampleDebug}
-        <div>{frames.length} unique frames identified</div>
-        {(processedCount > 0 && !stitchInfo) &&  <div>Processed {processedCount} timestamps</div>}
-        {stitchInfo && <div>Finished processing video</div>}
-        {(processedCount > 0 && !stitchInfo) && <progress className="progress is-link">15%</progress>}
-        {/*Finished running OCR for {processedCount} frames of {frames.length}*/}
-        {/*<DebugLog/>*/}
+
+
     </>
 }
 
