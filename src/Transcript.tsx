@@ -4,7 +4,7 @@ import {createWorker} from "tesseract.js";
 import { useDenoiserReplay} from "./ChatDenoiser.ts";
 
 export function Transcript() {
-    const [generateTranscript, setGEnerateTranscript] = useState(false);
+    const [generateTranscript, _setGEnerateTranscript] = useState(false);
     const [worker, setWorker] = useState<Awaited<ReturnType<typeof createWorker>> | null>(null)
 
     useEffect(() => {

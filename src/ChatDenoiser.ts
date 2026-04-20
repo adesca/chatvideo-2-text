@@ -67,8 +67,7 @@ type DenoiserResult = {
 
 function stepDenoiser(
     prevState: DenoiserState,
-    page: Page,
-    frameId: number
+    page: Page
 ): DenoiserResult {
     if (!page.blocks) {
         return {state: prevState, added: [], transcript: prevState.lines.join('\n')}
@@ -121,7 +120,7 @@ export function useDenoiserReplay(transcriptInfo: Record<number, Page>) {
         let transcript = "";
 
         for (const [frameId, page] of sortedEntries(transcriptInfo)) {
-            const result = stepDenoiser(state, page, +frameId);
+            const result = stepDenoiser(state, page);
             state = result.state;
             transcript = result.transcript;
 
