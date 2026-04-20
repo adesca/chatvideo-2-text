@@ -56,7 +56,6 @@ export function DebugStats() {
     </>
 }
 
-// @ts-expect-error will be used later
 function DebugLog() {
     const transcriptInfo = useVideoStore(s => s.transcriptInfo)
 

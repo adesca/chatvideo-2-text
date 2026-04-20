@@ -40,7 +40,8 @@ function StitchedImage() {
 
     if(!stitchInfo) return <></>
 
-    function downloadCanvas(canvas: HTMLCanvasElement, filename = "chat.png") {
+
+    function downloadCanvas(canvas: HTMLCanvasElement, filename = `chat-${new Date().getTime()}.png`) {
         canvas.toBlob((blob) => {
             if (!blob) return
 
